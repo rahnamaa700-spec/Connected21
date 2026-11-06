@@ -27,8 +27,12 @@ jobs:
 
       - name: Add sponsor dialog
         run: |
-          cat > V2rayNG/app/src/main/java/com/v2ray/ang/ui/SponsorDialog.kt <<'EOF'
-          package com.v2ray.ang.ui
+          F=$(find V2rayNG -name MainActivity.kt | head -1)
+          echo "Found: $F"
+          D=$(dirname "$F")
+          PKG=$(grep -m1 '^package ' "$F" | sed 's/package //')
+          cat > "$D/SponsorDialog.kt" <<'EOF'
+          package PKG_PLACEHOLDER
 
           import android.app.Activity
           import android.app.Dialog
@@ -123,9 +127,9 @@ jobs:
               }
           }
           EOF
-          F=V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
-          sed -i '0,/super.onCreate(savedInstanceState)/s//super.onCreate(savedInstanceState)\n        SponsorDialog.show(this)/' $F
-          grep -n "SponsorDialog" $F || { echo "MainActivity patch failed"; exit 1; }
+          sed -i "s|PKG_PLACEHOLDER|$PKG|" "$D/SponsorDialog.kt"
+          sed -i '0,/super.onCreate(savedInstanceState)/s//super.onCreate(savedInstanceState)\n        SponsorDialog.show(this)/' "$F"
+          grep -n "SponsorDialog" "$F" || { echo "MainActivity patch failed"; exit 1; }
 
       - name: Accept SDK licenses
         run: yes | sdkmanager --licenses > /dev/null || true
