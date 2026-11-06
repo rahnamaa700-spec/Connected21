@@ -3,155 +3,1227 @@ name: Build Connected21 APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
-      - name: Download Xray core library
+      - name: Install NDK
         run: |
+          SDKM=$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")
+          yes | "$SDKM" --licenses > /dev/null || true
+          NDKVER="30.0.16248370"
+          if echo y | "$SDKM" --channel=0 --install "ndk;$NDKVER" > /tmp/ndk.log 2>&1; then
+            echo "NDK_HOME=$ANDROID_HOME/ndk/$NDKVER" >> "$GITHUB_ENV"
+            sed -i "s|compileSdk = 37|compileSdk = 37\n    ndkVersion = \"$NDKVER\"|" V2rayNG/app/build.gradle.kts
+          else
+            tail -20 /tmp/ndk.log
+            echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          fi
+          grep -n "ndkVersion" V2rayNG/app/build.gradle.kts || true
+
+      - name: Build VPN tunnel library (libhevtun)
+        run: bash compile-hevtun.sh
+
+      - name: Copy tunnel library
+        run: cp -r libs V2rayNG/app/
+
+      - name: Download Xray core library (matching version)
+        run: |
+          TAG=$(cd AndroidLibXrayLite && git describe --tags --abbrev=0 2>/dev/null || true)
+          echo "Xray lib tag: $TAG"
           mkdir -p V2rayNG/app/libs
-          curl -L -f -o V2rayNG/app/libs/libv2ray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
+          OUT=V2rayNG/app/libs/libv2ray.aar
+          if [ -z "$TAG" ] || ! curl -L -f -o "$OUT" "https://github.com/2dust/AndroidLibXrayLite/releases/download/${TAG}/libv2ray.aar"; then
+            echo "tag download failed, using latest"
+            curl -L -f -o "$OUT" "https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar"
+          fi
+          ls -la V2rayNG/app/libs
 
-      - name: Rename app to Connected21
+      - name: Write Connected21 design files
         run: |
-          sed -i 's|>v2rayNG<|>Connected21<|g' V2rayNG/app/src/main/res/values/strings.xml
-
-      - name: Add sponsor dialog
-        run: |
-          F=$(find V2rayNG -name MainActivity.kt | head -1)
-          echo "Found: $F"
-          D=$(dirname "$F")
-          PKG=$(grep -m1 '^package ' "$F" | sed 's/package //')
-          cat > "$D/SponsorDialog.kt" <<'EOF'
-          package PKG_PLACEHOLDER
+          D=/tmp/c21src
+          mkdir -p "$D"
+          cat > "$D/Theme.kt" <<'C21_EOF'
+          package com.v2ray.ang.ui.compose
 
           import android.app.Activity
-          import android.app.Dialog
-          import android.content.Intent
-          import android.graphics.Color
-          import android.graphics.Typeface
-          import android.graphics.drawable.ColorDrawable
-          import android.graphics.drawable.GradientDrawable
-          import android.net.Uri
-          import android.view.Gravity
-          import android.view.View
-          import android.view.ViewGroup
-          import android.view.Window
-          import android.widget.LinearLayout
-          import android.widget.TextView
+          import android.os.Build
+          import androidx.compose.foundation.isSystemInDarkTheme
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.material3.MaterialTheme
+          import androidx.compose.material3.darkColorScheme
+          import androidx.compose.material3.dynamicDarkColorScheme
+          import androidx.compose.material3.dynamicLightColorScheme
+          import androidx.compose.material3.lightColorScheme
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.CompositionLocalProvider
+          import androidx.compose.runtime.SideEffect
+          import androidx.compose.runtime.collectAsState
+          import androidx.compose.runtime.compositionLocalOf
+          import androidx.compose.runtime.getValue
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalView
+          import androidx.core.view.WindowCompat
+          import com.v2ray.ang.AppConfig
+          import com.v2ray.ang.handler.MmkvManager
+          import kotlinx.coroutines.flow.MutableStateFlow
+          import kotlinx.coroutines.flow.StateFlow
+          import kotlinx.coroutines.flow.asStateFlow
 
-          object SponsorDialog {
+          private val LightColor = lightColorScheme(
+              primary = Color(0xFF6D28D9),
+              onPrimary = Color(0xFFFFFFFF),
+              primaryContainer = Color(0xFFEDE4FF),
+              onPrimaryContainer = Color(0xFF2A0A66),
+              secondary = Color(0xFF0891B2),
+              onSecondary = Color(0xFFFFFFFF),
+              secondaryContainer = Color(0xFFCFF4FC),
+              onSecondaryContainer = Color(0xFF00313B),
+              tertiary = Color(0xFF059669),
+              onTertiary = Color(0xFFFFFFFF),
+              tertiaryContainer = Color(0xFFB8F2DC),
+              onTertiaryContainer = Color(0xFF00201A),
+              error = Color(0xFFDC2626),
+              errorContainer = Color(0xFFFFDAD6),
+              onError = Color(0xFFFFFFFF),
+              onErrorContainer = Color(0xFF410002),
+              background = Color(0xFFF4F5FF),
+              onBackground = Color(0xFF12142B),
+              surface = Color(0xFFFFFFFF),
+              onSurface = Color(0xFF12142B),
+              surfaceVariant = Color(0xFFE8E9F7),
+              onSurfaceVariant = Color(0xFF4B4E6B),
+              outline = Color(0xFF8A8DAA),
+              outlineVariant = Color(0xFFD5D7EC),
+              inverseSurface = Color(0xFF2A2D4A),
+              inverseOnSurface = Color(0xFFF1F1FF),
+              inversePrimary = Color(0xFFC4B0FF),
+              scrim = Color(0xFF000000),
+              surfaceTint = Color(0xFF6D28D9),
+              surfaceContainerLowest = Color(0xFFFFFFFF),
+              surfaceContainerLow = Color(0xFFF7F7FF),
+              surfaceContainer = Color(0xFFF0F0FC),
+              surfaceContainerHigh = Color(0xFFE9E9F8),
+              surfaceContainerHighest = Color(0xFFE2E2F4),
+          )
 
-              private fun dp(a: Activity, v: Int): Int =
-                  (v * a.resources.displayMetrics.density).toInt()
+          private val DarkColor = darkColorScheme(
+              primary = Color(0xFFA78BFA),
+              onPrimary = Color(0xFF1B0A4D),
+              primaryContainer = Color(0xFF3B2A7A),
+              onPrimaryContainer = Color(0xFFE9E0FF),
+              secondary = Color(0xFF22D3EE),
+              onSecondary = Color(0xFF00363F),
+              secondaryContainer = Color(0xFF0B4A57),
+              onSecondaryContainer = Color(0xFFC8F4FF),
+              tertiary = Color(0xFF34D399),
+              onTertiary = Color(0xFF00382A),
+              tertiaryContainer = Color(0xFF0A5441),
+              onTertiaryContainer = Color(0xFFB8F2DC),
+              error = Color(0xFFFF8A80),
+              errorContainer = Color(0xFF93000A),
+              onError = Color(0xFF690005),
+              onErrorContainer = Color(0xFFFFDAD6),
+              background = Color(0xFF070B1A),
+              onBackground = Color(0xFFE8EAFF),
+              surface = Color(0xFF0E1430),
+              onSurface = Color(0xFFE8EAFF),
+              surfaceVariant = Color(0xFF232A52),
+              onSurfaceVariant = Color(0xFFB4B9DC),
+              outline = Color(0xFF6E75A8),
+              outlineVariant = Color(0xFF2A3160),
+              inverseSurface = Color(0xFFE8EAFF),
+              inverseOnSurface = Color(0xFF12142B),
+              inversePrimary = Color(0xFF6D28D9),
+              scrim = Color(0xFF000000),
+              surfaceTint = Color(0xFFA78BFA),
+              surfaceContainerLowest = Color(0xFF050818),
+              surfaceContainerLow = Color(0xFF0B1028),
+              surfaceContainer = Color(0xFF121940),
+              surfaceContainerHigh = Color(0xFF192050),
+              surfaceContainerHighest = Color(0xFF212963),
+          )
 
-              fun show(activity: Activity) {
-                  val prefs = activity.getSharedPreferences("connected21", Activity.MODE_PRIVATE)
-                  val now = System.currentTimeMillis()
-                  if (now - prefs.getLong("sponsor_last", 0L) < 6 * 60 * 60 * 1000L) return
-                  prefs.edit().putLong("sponsor_last", now).apply()
+          // Semantic Colors
+          val colorPing = Color(0xFF34D399)
+          val colorPingRed = Color(0xFFFF5C8A)
+          val colorConfigType = Color(0xFF22D3EE)
+          val colorFabActive = Color(0xFF34D399)
+          val colorFabInactiveLight = Color(0xFF8B5CF6)
+          val colorFabInactiveDark = Color(0xFF7C5CFF)
+          val dividerColorLight = Color(0x1F6D28D9)
+          val dividerColorDark = Color(0x1FFFFFFF)
 
-                  val dialog = Dialog(activity)
-                  dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+          // Toast Colors 85%
+          val toastNormalBgLight = Color(0xD9232A52)
+          val toastNormalBgDark = Color(0xD9232A52)
+          val toastSuccessBg = Color(0xD9059669)
+          val toastErrorBg = Color(0xD9DC2626)
+          val toastInfoBg = Color(0xD96D28D9)
+          val toastIconCircleBg = Color(0x33FFFFFF)
+          val toastTextColor = Color.White // White
 
-                  val root = LinearLayout(activity).apply {
-                      orientation = LinearLayout.VERTICAL
-                      gravity = Gravity.CENTER_HORIZONTAL
-                      layoutDirection = View.LAYOUT_DIRECTION_RTL
-                      setPadding(dp(activity, 24), dp(activity, 28), dp(activity, 24), dp(activity, 20))
-                      background = GradientDrawable(
-                          GradientDrawable.Orientation.TL_BR,
-                          intArrayOf(Color.parseColor("#12063B"), Color.parseColor("#5B21B6"), Color.parseColor("#0891B2"))
-                      ).apply { cornerRadius = dp(activity, 28).toFloat() }
-                  }
+          object ThemeManager {
+              private val _themeMode = MutableStateFlow(
+                  MmkvManager.decodeSettingsString(AppConfig.PREF_UI_MODE_NIGHT, "2") ?: "0"
+              )
+              val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
-                  fun label(text: String, size: Float, color: String, bold: Boolean = false, top: Int = 0) =
-                      TextView(activity).apply {
-                          this.text = text
-                          textSize = size
-                          setTextColor(Color.parseColor(color))
-                          gravity = Gravity.CENTER
-                          if (bold) setTypeface(typeface, Typeface.BOLD)
-                          setPadding(0, dp(activity, top), 0, 0)
-                      }
+              private val _dynamicColorEnabled = MutableStateFlow(
+                  MmkvManager.decodeSettingsBool(AppConfig.PREF_DYNAMIC_COLOR, false)
+              )
+              val dynamicColorEnabled: StateFlow<Boolean> = _dynamicColorEnabled.asStateFlow()
 
-                  root.addView(label("✦", 34f, "#FFFFFF"))
-                  root.addView(label("اسپانسر رسمی Connected21", 14f, "#B8E6FF", top = 6))
-                  root.addView(label("کانفیگ اختصاصی\nبدون قطعی", 24f, "#FFFFFF", bold = true, top = 14))
-                  root.addView(label("با پایین‌ترین قیمت بازار\nخرید سریع و پشتیبانی همیشگی", 14f, "#E5E7EB", top = 12))
-                  root.addView(label("@Vpn_Store21", 18f, "#FDE68A", bold = true, top = 14))
+              fun setThemeMode(mode: String) {
+                  MmkvManager.encodeSettings(AppConfig.PREF_UI_MODE_NIGHT, mode)
+                  _themeMode.value = mode
+              }
 
-                  val button = TextView(activity).apply {
-                      text = "عضویت و خرید در تلگرام"
-                      textSize = 16f
-                      setTextColor(Color.parseColor("#12063B"))
-                      setTypeface(typeface, Typeface.BOLD)
-                      gravity = Gravity.CENTER
-                      background = GradientDrawable().apply {
-                          setColor(Color.WHITE)
-                          cornerRadius = dp(activity, 20).toFloat()
-                      }
-                      setOnClickListener {
-                          try {
-                              activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Vpn_Store21")))
-                          } catch (e: Exception) {
-                          }
-                          dialog.dismiss()
-                      }
-                  }
-                  root.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 52)).apply {
-                      topMargin = dp(activity, 20)
-                  })
+              fun setDynamicColorEnabled(enabled: Boolean) {
+                  MmkvManager.encodeSettings(AppConfig.PREF_DYNAMIC_COLOR, enabled)
+                  _dynamicColorEnabled.value = enabled
+              }
 
-                  val later = label("بعداً", 14f, "#CBD5E1", top = 14).apply {
-                      setPadding(dp(activity, 20), dp(activity, 14), dp(activity, 20), dp(activity, 4))
-                      setOnClickListener { dialog.dismiss() }
-                  }
-                  root.addView(later)
-
-                  dialog.setContentView(root)
-                  dialog.window?.apply {
-                      setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-                      setLayout((activity.resources.displayMetrics.widthPixels * 0.9).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
-                  }
-                  dialog.show()
+              fun refresh() {
+                  _themeMode.value =
+                      MmkvManager.decodeSettingsString(AppConfig.PREF_UI_MODE_NIGHT, "2") ?: "0"
+                  _dynamicColorEnabled.value =
+                      MmkvManager.decodeSettingsBool(AppConfig.PREF_DYNAMIC_COLOR, false)
               }
           }
-          EOF
-          sed -i "s|PKG_PLACEHOLDER|$PKG|" "$D/SponsorDialog.kt"
-          sed -i '0,/super.onCreate(savedInstanceState)/s//super.onCreate(savedInstanceState)\n        SponsorDialog.show(this)/' "$F"
-          grep -n "SponsorDialog" "$F" || { echo "MainActivity patch failed"; exit 1; }
 
-      - name: Accept SDK licenses
-        run: yes | sdkmanager --licenses > /dev/null || true
+          @Composable
+          fun resolveDarkTheme(): Boolean {
+              val mode by ThemeManager.themeMode.collectAsState()
+              return when (mode) {
+                  "1" -> false
+                  "2" -> true
+                  else -> isSystemInDarkTheme()
+              }
+          }
 
-      - name: Build debug APK
+          val LocalDarkTheme = compositionLocalOf { false }
+
+          @Composable
+          fun AppTheme(
+              darkTheme: Boolean = resolveDarkTheme(),
+              content: @Composable () -> Unit
+          ) {
+              val dynamicColor by ThemeManager.dynamicColorEnabled.collectAsState()
+              val context = LocalContext.current
+              val colorScheme = when {
+                  dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                      if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+                  }
+
+                  darkTheme -> DarkColor
+                  else -> LightColor
+              }
+              val snackbarController = rememberAppSnackbarController()
+
+              val view = LocalView.current
+              if (!view.isInEditMode) {
+                  SideEffect {
+                      val activity = view.context as? Activity ?: return@SideEffect
+                      val window = activity.window
+                      WindowCompat.getInsetsController(window, view).apply {
+                          isAppearanceLightStatusBars = !darkTheme
+                          isAppearanceLightNavigationBars = !darkTheme
+                      }
+                  }
+              }
+
+              CompositionLocalProvider(
+                  LocalDarkTheme provides darkTheme,
+                  LocalAppSnackbar provides snackbarController
+              ) {
+                  MaterialTheme(
+                      colorScheme = colorScheme
+                  ) {
+                      Box(modifier = Modifier.fillMaxSize()) {
+                          AppSnackbarBridge(controller = snackbarController)
+                          content()
+                          AppSnackbarHost(hostState = snackbarController.hostState)
+                      }
+                  }
+              }
+          }
+          C21_EOF
+          cat > "$D/MainBottomBar.kt" <<'C21_EOF'
+          package com.v2ray.ang.ui.main
+
+          import androidx.compose.animation.core.LinearEasing
+          import androidx.compose.animation.core.RepeatMode
+          import androidx.compose.animation.core.animateFloat
+          import androidx.compose.animation.core.infiniteRepeatable
+          import androidx.compose.animation.core.rememberInfiniteTransition
+          import androidx.compose.animation.core.tween
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.WindowInsets
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.navigationBars
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.layout.windowInsetsPadding
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material3.Icon
+          import androidx.compose.material3.MaterialTheme
+          import androidx.compose.material3.Text
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.CompositionLocalProvider
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.platform.LocalLayoutDirection
+          import androidx.compose.ui.res.painterResource
+          import androidx.compose.ui.res.stringResource
+          import androidx.compose.ui.semantics.contentDescription
+          import androidx.compose.ui.semantics.semantics
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextAlign
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.LayoutDirection
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.v2ray.ang.R
+          import com.v2ray.ang.ui.compose.colorFabActive
+
+          @Composable
+          fun MainBottomBar(
+              displayText: String,
+              isRunning: Boolean,
+              isDarkTheme: Boolean,
+              onAction: (MainAction) -> Unit
+          ) {
+              val panelShape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
+              val accent = if (isRunning) colorFabActive else C21Violet
+
+              CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxWidth()
+                          .clip(panelShape)
+                          .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+                          .border(1.dp, MaterialTheme.colorScheme.outlineVariant, panelShape)
+                          .windowInsetsPadding(WindowInsets.navigationBars)
+                          .padding(top = 10.dp, bottom = 12.dp),
+                      horizontalAlignment = Alignment.CenterHorizontally
+                  ) {
+                      Row(
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .padding(horizontal = 20.dp),
+                          verticalAlignment = Alignment.CenterVertically,
+                          horizontalArrangement = Arrangement.SpaceBetween
+                      ) {
+                          C21ActionChip(
+                              iconRes = R.drawable.ic_flash_on_24dp,
+                              label = "پینگ اتصال",
+                              onClick = { onAction(MainAction.TestCurrentServer) }
+                          )
+                          C21ConnectButton(
+                              isRunning = isRunning,
+                              accent = accent,
+                              onClick = { onAction(MainAction.ToggleService) }
+                          )
+                          C21ActionChip(
+                              iconRes = R.drawable.ic_refresh_24dp,
+                              label = "تست همه",
+                              onClick = { onAction(MainAction.TestRealAllServers) }
+                          )
+                      }
+                      Text(
+                          text = if (isRunning) "متصل" else "قطع",
+                          color = accent,
+                          fontSize = 15.sp,
+                          fontWeight = FontWeight.Bold,
+                          textAlign = TextAlign.Center
+                      )
+                      Spacer(Modifier.height(2.dp))
+                      Text(
+                          text = displayText,
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .clickable { onAction(MainAction.TestCurrentServer) }
+                              .padding(horizontal = 24.dp, vertical = 2.dp)
+                              .semantics { contentDescription = displayText },
+                          style = MaterialTheme.typography.bodySmall,
+                          color = MaterialTheme.colorScheme.onSurfaceVariant,
+                          textAlign = TextAlign.Center,
+                          maxLines = 2,
+                          overflow = TextOverflow.Ellipsis
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          private fun C21ConnectButton(
+              isRunning: Boolean,
+              accent: Color,
+              onClick: () -> Unit
+          ) {
+              val pulse = if (isRunning) {
+                  val transition = rememberInfiniteTransition(label = "c21-pulse")
+                  transition.animateFloat(
+                      initialValue = 0f,
+                      targetValue = 1f,
+                      animationSpec = infiniteRepeatable(
+                          animation = tween(durationMillis = 2400, easing = LinearEasing),
+                          repeatMode = RepeatMode.Restart
+                      ),
+                      label = "c21-pulse-value"
+                  ).value
+              } else {
+                  0f
+              }
+
+              val buttonBrush = if (isRunning) {
+                  Brush.linearGradient(listOf(Color(0xFF10B981), Color(0xFF22D3EE)))
+              } else {
+                  Brush.linearGradient(listOf(Color(0xFF7C5CFF), Color(0xFF22D3EE)))
+              }
+
+              Box(
+                  modifier = Modifier.size(116.dp),
+                  contentAlignment = Alignment.Center
+              ) {
+                  Canvas(modifier = Modifier.fillMaxSize()) {
+                      val maxRadius = size.minDimension / 2f
+                      drawCircle(
+                          brush = Brush.radialGradient(
+                              colors = listOf(
+                                  accent.copy(alpha = if (isRunning) 0.35f else 0.20f),
+                                  Color.Transparent
+                              ),
+                              center = center,
+                              radius = maxRadius
+                          ),
+                          radius = maxRadius,
+                          center = center
+                      )
+                      if (isRunning) {
+                          for (i in 0..1) {
+                              val p = (pulse + i * 0.5f) % 1f
+                              drawCircle(
+                                  color = accent.copy(alpha = (1f - p) * 0.45f),
+                                  radius = maxRadius * (0.58f + 0.42f * p),
+                                  center = center,
+                                  style = Stroke(width = 3.dp.toPx())
+                              )
+                          }
+                      }
+                  }
+                  Box(
+                      modifier = Modifier
+                          .size(78.dp)
+                          .clip(CircleShape)
+                          .background(buttonBrush)
+                          .border(2.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                          .clickable(onClick = onClick),
+                      contentAlignment = Alignment.Center
+                  ) {
+                      Icon(
+                          painter = painterResource(
+                              if (isRunning) R.drawable.ic_stop_24dp else R.drawable.ic_play_24dp
+                          ),
+                          contentDescription = stringResource(
+                              if (isRunning) R.string.acc_stop else R.string.acc_start
+                          ),
+                          tint = Color.White,
+                          modifier = Modifier.size(36.dp)
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          private fun C21ActionChip(
+              iconRes: Int,
+              label: String,
+              onClick: () -> Unit
+          ) {
+              CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                  Column(
+                      modifier = Modifier
+                          .width(82.dp)
+                          .clip(RoundedCornerShape(18.dp))
+                          .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                          .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(18.dp))
+                          .clickable(onClick = onClick)
+                          .padding(vertical = 10.dp),
+                      horizontalAlignment = Alignment.CenterHorizontally
+                  ) {
+                      Icon(
+                          painter = painterResource(iconRes),
+                          contentDescription = label,
+                          tint = C21Cyan,
+                          modifier = Modifier.size(22.dp)
+                      )
+                      Spacer(Modifier.height(4.dp))
+                      Text(
+                          text = label,
+                          color = MaterialTheme.colorScheme.onSurface,
+                          fontSize = 11.sp,
+                          textAlign = TextAlign.Center,
+                          maxLines = 1
+                      )
+                  }
+              }
+          }
+          C21_EOF
+          cat > "$D/MainDrawer.kt" <<'C21_EOF'
+          package com.v2ray.ang.ui.main
+
+          import androidx.annotation.DrawableRes
+          import androidx.annotation.StringRes
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.rememberScrollState
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.verticalScroll
+          import androidx.compose.material3.DrawerState
+          import androidx.compose.material3.Icon
+          import androidx.compose.material3.MaterialTheme
+          import androidx.compose.material3.ModalDrawerSheet
+          import androidx.compose.material3.NavigationDrawerItem
+          import androidx.compose.material3.NavigationDrawerItemDefaults
+          import androidx.compose.material3.Text
+          import androidx.compose.runtime.Composable
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.res.painterResource
+          import androidx.compose.ui.res.stringResource
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import com.v2ray.ang.R
+          import com.v2ray.ang.ui.compose.AppDivider
+          import com.v2ray.ang.ui.compose.verticalScrollbar
+
+          enum class MainDestination(@DrawableRes val iconRes: Int, @StringRes val labelRes: Int) {
+              Subscriptions(R.drawable.ic_subscriptions_24dp, R.string.title_sub_setting),
+              PerAppProxy(R.drawable.ic_per_apps_24dp, R.string.per_app_proxy_settings),
+              Routing(R.drawable.ic_routing_24dp, R.string.routing_settings_title),
+              UserAssets(R.drawable.ic_file_24dp, R.string.title_user_asset_setting),
+              Settings(R.drawable.ic_settings_24dp, R.string.title_settings),
+              Promotion(R.drawable.ic_promotion_24dp, R.string.title_pref_promotion),
+              Logcat(R.drawable.ic_logcat_24dp, R.string.title_logcat),
+              CheckUpdate(R.drawable.ic_check_update_24dp, R.string.update_check_for_update),
+              BackupRestore(R.drawable.ic_restore_24dp, R.string.title_configuration_backup_restore),
+              About(R.drawable.ic_about_24dp, R.string.title_about)
+          }
+
+          private val primaryDrawerItems = listOf(
+              MainDestination.Subscriptions,
+              MainDestination.PerAppProxy,
+              MainDestination.Routing,
+              MainDestination.UserAssets,
+              MainDestination.Settings
+          )
+
+          private val drawerItems = primaryDrawerItems + listOf(
+              MainDestination.Promotion,
+              MainDestination.Logcat,
+              MainDestination.BackupRestore,
+              MainDestination.About
+          )
+
+          @Composable
+          fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) -> Unit) {
+              val drawerScrollState = rememberScrollState()
+
+              ModalDrawerSheet(
+                  drawerState = drawerState,
+                  modifier = Modifier.fillMaxWidth(0.82f),
+                  drawerContainerColor = MaterialTheme.colorScheme.surface
+              ) {
+                  Column(
+                      modifier = Modifier
+                          .verticalScroll(drawerScrollState)
+                          .verticalScrollbar(drawerScrollState)
+                  ) {
+                      Box(
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .height(190.dp)
+                              .background(
+                                  Brush.linearGradient(
+                                      listOf(Color(0xFF12063B), Color(0xFF5B21B6), Color(0xFF0891B2))
+                                  )
+                              )
+                      ) {
+                          Column(
+                              modifier = Modifier
+                                  .align(Alignment.Center)
+                                  .padding(16.dp),
+                              horizontalAlignment = Alignment.CenterHorizontally
+                          ) {
+                              Box(
+                                  modifier = Modifier
+                                      .size(84.dp)
+                                      .clip(RoundedCornerShape(26.dp))
+                                      .background(Color.White.copy(alpha = 0.14f)),
+                                  contentAlignment = Alignment.Center
+                              ) {
+                                  Image(
+                                      painter = painterResource(R.drawable.c21_fg),
+                                      contentDescription = null,
+                                      modifier = Modifier.size(84.dp)
+                                  )
+                              }
+                              Spacer(Modifier.height(10.dp))
+                              Text(
+                                  text = stringResource(R.string.app_name),
+                                  color = Color.White,
+                                  fontSize = 22.sp,
+                                  fontWeight = FontWeight.Bold
+                              )
+                              Text(
+                                  text = "اتصال امن، ساده و سریع",
+                                  color = Color(0xFFB8E6FF),
+                                  fontSize = 12.sp
+                              )
+                          }
+                      }
+                      Spacer(Modifier.height(8.dp))
+                      drawerItems.forEachIndexed { index, item ->
+                          if (index == primaryDrawerItems.size) AppDivider()
+                          val isPromo = item == MainDestination.Promotion
+                          NavigationDrawerItem(
+                              label = {
+                                  Text(if (isPromo) "خرید کانفیگ اختصاصی" else stringResource(item.labelRes))
+                              },
+                              selected = false,
+                              onClick = { onNavigate(item) },
+                              icon = {
+                                  Icon(
+                                      painterResource(if (isPromo) R.drawable.ic_telegram_24dp else item.iconRes),
+                                      contentDescription = null
+                                  )
+                              },
+                              modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                          )
+                      }
+                      Spacer(Modifier.height(12.dp))
+                      C21SponsorCard(modifier = Modifier.padding(horizontal = 16.dp))
+                      Spacer(Modifier.height(20.dp))
+                  }
+              }
+          }
+          C21_EOF
+          cat > "$D/Connected21UI.kt" <<'C21_EOF'
+          package com.v2ray.ang.ui.main
+
+          import android.content.Context
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material3.MaterialTheme
+          import androidx.compose.material3.Text
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.CompositionLocalProvider
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.drawBehind
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.platform.LocalLayoutDirection
+          import androidx.compose.ui.platform.LocalUriHandler
+          import androidx.compose.ui.platform.UriHandler
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextAlign
+          import androidx.compose.ui.unit.LayoutDirection
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.compose.ui.window.Dialog
+          import androidx.compose.ui.window.DialogProperties
+
+          // ---------------------------------------------------------------------------
+          // Connected21 brand pieces: aurora background, sponsor popup/banner/card, quick start guide
+          // ---------------------------------------------------------------------------
+
+          private const val C21_TELEGRAM_URL = "https://t.me/Vpn_Store21"
+          private const val C21_PREFS = "connected21_ui"
+          private const val C21_SPONSOR_INTERVAL_MS = 6L * 60L * 60L * 1000L
+
+          internal val C21Violet = Color(0xFF7C5CFF)
+          internal val C21Cyan = Color(0xFF22D3EE)
+          internal val C21Mint = Color(0xFF34D399)
+          internal val C21Gold = Color(0xFFFBBF24)
+
+          private val C21SponsorBrush = Brush.linearGradient(
+              colors = listOf(Color(0xFF12063B), Color(0xFF5B21B6), Color(0xFF0891B2))
+          )
+
+          private fun c21OpenTelegram(handler: UriHandler) {
+              try {
+                  handler.openUri(C21_TELEGRAM_URL)
+              } catch (e: Exception) {
+                  // no app can open the link, ignore
+              }
+          }
+
+          /** Dark navy canvas with soft violet and cyan glows, used behind the main screen. */
+          fun Modifier.c21Aurora(dark: Boolean): Modifier = this.drawBehind {
+              val base = if (dark) Color(0xFF070B1A) else Color(0xFFF4F5FF)
+              drawRect(base)
+              val violetAlpha = if (dark) 0.38f else 0.16f
+              val cyanAlpha = if (dark) 0.26f else 0.12f
+              val r1 = size.width * 0.95f
+              val c1 = Offset(size.width * 0.12f, size.height * 0.02f)
+              drawCircle(
+                  brush = Brush.radialGradient(
+                      colors = listOf(C21Violet.copy(alpha = violetAlpha), Color.Transparent),
+                      center = c1,
+                      radius = r1
+                  ),
+                  radius = r1,
+                  center = c1
+              )
+              val r2 = size.width * 0.9f
+              val c2 = Offset(size.width * 0.95f, size.height * 0.78f)
+              drawCircle(
+                  brush = Brush.radialGradient(
+                      colors = listOf(C21Cyan.copy(alpha = cyanAlpha), Color.Transparent),
+                      center = c2,
+                      radius = r2
+                  ),
+                  radius = r2,
+                  center = c2
+              )
+          }
+
+          /** Full sponsor dialog, shown at most once every 6 hours. */
+          @Composable
+          fun C21SponsorPopup() {
+              val context = LocalContext.current
+              val uriHandler = LocalUriHandler.current
+              var show by remember {
+                  val prefs = context.getSharedPreferences(C21_PREFS, Context.MODE_PRIVATE)
+                  val now = System.currentTimeMillis()
+                  val due = now - prefs.getLong("sponsor_last", 0L) >= C21_SPONSOR_INTERVAL_MS
+                  if (due) prefs.edit().putLong("sponsor_last", now).apply()
+                  mutableStateOf(due)
+              }
+              if (!show) return
+
+              Dialog(
+                  onDismissRequest = { show = false },
+                  properties = DialogProperties(usePlatformDefaultWidth = false)
+              ) {
+                  CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                      Column(
+                          modifier = Modifier
+                              .padding(horizontal = 24.dp)
+                              .fillMaxWidth()
+                              .clip(RoundedCornerShape(28.dp))
+                              .background(C21SponsorBrush)
+                              .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(28.dp))
+                              .padding(horizontal = 24.dp, vertical = 28.dp),
+                          horizontalAlignment = Alignment.CenterHorizontally
+                      ) {
+                          Text("✦", color = C21Gold, fontSize = 34.sp)
+                          Spacer(Modifier.height(4.dp))
+                          Text(
+                              "اسپانسر رسمی Connected21",
+                              color = Color(0xFFB8E6FF),
+                              fontSize = 13.sp,
+                              textAlign = TextAlign.Center
+                          )
+                          Spacer(Modifier.height(14.dp))
+                          Text(
+                              "کانفیگ اختصاصی\nبدون قطعی",
+                              color = Color.White,
+                              fontSize = 26.sp,
+                              fontWeight = FontWeight.Bold,
+                              textAlign = TextAlign.Center,
+                              lineHeight = 36.sp
+                          )
+                          Spacer(Modifier.height(12.dp))
+                          Text(
+                              "با پایین‌ترین قیمت بازار\nخرید سریع و پشتیبانی همیشگی",
+                              color = Color(0xFFE5E7EB),
+                              fontSize = 14.sp,
+                              textAlign = TextAlign.Center,
+                              lineHeight = 22.sp
+                          )
+                          Spacer(Modifier.height(14.dp))
+                          Text(
+                              "@Vpn_Store21",
+                              color = C21Gold,
+                              fontSize = 19.sp,
+                              fontWeight = FontWeight.Bold
+                          )
+                          Spacer(Modifier.height(20.dp))
+                          Box(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .height(52.dp)
+                                  .clip(RoundedCornerShape(20.dp))
+                                  .background(Color.White)
+                                  .clickable {
+                                      c21OpenTelegram(uriHandler)
+                                      show = false
+                                  },
+                              contentAlignment = Alignment.Center
+                          ) {
+                              Text(
+                                  "عضویت و خرید در تلگرام",
+                                  color = Color(0xFF12063B),
+                                  fontSize = 16.sp,
+                                  fontWeight = FontWeight.Bold
+                              )
+                          }
+                          Spacer(Modifier.height(6.dp))
+                          Box(
+                              modifier = Modifier
+                                  .clip(RoundedCornerShape(12.dp))
+                                  .clickable { show = false }
+                                  .padding(horizontal = 24.dp, vertical = 10.dp)
+                          ) {
+                              Text("بعداً", color = Color(0xFFCBD5E1), fontSize = 14.sp)
+                          }
+                      }
+                  }
+              }
+          }
+
+          /** Slim permanent sponsor strip under the top bar. */
+          @Composable
+          fun C21SponsorBanner() {
+              val uriHandler = LocalUriHandler.current
+              CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                  Row(
+                      modifier = Modifier
+                          .padding(horizontal = 12.dp, vertical = 6.dp)
+                          .fillMaxWidth()
+                          .clip(RoundedCornerShape(16.dp))
+                          .background(C21SponsorBrush)
+                          .clickable { c21OpenTelegram(uriHandler) }
+                          .padding(horizontal = 14.dp, vertical = 10.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                  ) {
+                      Text("✦", color = C21Gold, fontSize = 18.sp)
+                      Spacer(Modifier.width(10.dp))
+                      Column(modifier = Modifier.weight(1f)) {
+                          Text(
+                              "کانفیگ اختصاصی بدون قطعی",
+                              color = Color.White,
+                              fontSize = 13.sp,
+                              fontWeight = FontWeight.Bold
+                          )
+                          Text(
+                              "پایین‌ترین قیمت بازار",
+                              color = Color(0xFFCBD5E1),
+                              fontSize = 11.sp
+                          )
+                      }
+                      Box(
+                          modifier = Modifier
+                              .clip(RoundedCornerShape(10.dp))
+                              .background(Color.White.copy(alpha = 0.16f))
+                              .padding(horizontal = 10.dp, vertical = 5.dp)
+                      ) {
+                          Text(
+                              "@Vpn_Store21",
+                              color = C21Gold,
+                              fontSize = 12.sp,
+                              fontWeight = FontWeight.Bold
+                          )
+                      }
+                  }
+              }
+          }
+
+          /** Sponsor card used at the bottom of the side menu. */
+          @Composable
+          fun C21SponsorCard(modifier: Modifier = Modifier) {
+              val uriHandler = LocalUriHandler.current
+              CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                  Column(
+                      modifier = modifier
+                          .fillMaxWidth()
+                          .clip(RoundedCornerShape(20.dp))
+                          .background(C21SponsorBrush)
+                          .clickable { c21OpenTelegram(uriHandler) }
+                          .padding(16.dp),
+                      horizontalAlignment = Alignment.CenterHorizontally
+                  ) {
+                      Text("✦ اسپانسر رسمی", color = Color(0xFFB8E6FF), fontSize = 12.sp)
+                      Spacer(Modifier.height(6.dp))
+                      Text(
+                          "کانفیگ اختصاصی بدون قطعی",
+                          color = Color.White,
+                          fontSize = 15.sp,
+                          fontWeight = FontWeight.Bold,
+                          textAlign = TextAlign.Center
+                      )
+                      Spacer(Modifier.height(4.dp))
+                      Text(
+                          "پایین‌ترین قیمت بازار",
+                          color = Color(0xFFE5E7EB),
+                          fontSize = 12.sp
+                      )
+                      Spacer(Modifier.height(10.dp))
+                      Box(
+                          modifier = Modifier
+                              .clip(RoundedCornerShape(12.dp))
+                              .background(Color.White)
+                              .padding(horizontal = 16.dp, vertical = 8.dp)
+                      ) {
+                          Text(
+                              "@Vpn_Store21",
+                              color = Color(0xFF12063B),
+                              fontSize = 13.sp,
+                              fontWeight = FontWeight.Bold
+                          )
+                      }
+                  }
+              }
+          }
+
+          /** Three simple steps for first-time users. Stays until the user dismisses it. */
+          @Composable
+          fun C21QuickStart() {
+              val context = LocalContext.current
+              val prefs = remember { context.getSharedPreferences(C21_PREFS, Context.MODE_PRIVATE) }
+              var visible by remember { mutableStateOf(!prefs.getBoolean("guide_done", false)) }
+              if (!visible) return
+
+              CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                  Column(
+                      modifier = Modifier
+                          .padding(horizontal = 12.dp, vertical = 4.dp)
+                          .fillMaxWidth()
+                          .clip(RoundedCornerShape(20.dp))
+                          .background(MaterialTheme.colorScheme.surfaceContainer)
+                          .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(20.dp))
+                          .padding(16.dp)
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                          Text(
+                              "شروع سریع ✨",
+                              modifier = Modifier.weight(1f),
+                              color = MaterialTheme.colorScheme.onSurface,
+                              fontSize = 16.sp,
+                              fontWeight = FontWeight.Bold
+                          )
+                          Box(
+                              modifier = Modifier
+                                  .clip(RoundedCornerShape(10.dp))
+                                  .clickable {
+                                      prefs.edit().putBoolean("guide_done", true).apply()
+                                      visible = false
+                                  }
+                                  .padding(horizontal = 10.dp, vertical = 6.dp)
+                          ) {
+                              Text("فهمیدم", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                          }
+                      }
+                      Spacer(Modifier.height(8.dp))
+                      C21Step("۱", "کانفیگ یا لینک اشتراک را کپی کنید، بعد روی دکمه + بالای صفحه بزنید و از کلیپ‌بورد وارد کنید.")
+                      C21Step("۲", "یک سرور را انتخاب کنید و دکمه بزرگ اتصال پایین صفحه را لمس کنید.")
+                      C21Step("۳", "برای پینگ سرور متصل روی «پینگ اتصال» و برای پینگ همه سرورها روی «تست همه» بزنید.")
+                  }
+              }
+          }
+
+          @Composable
+          private fun C21Step(number: String, text: String) {
+              Row(
+                  modifier = Modifier.padding(vertical = 4.dp),
+                  verticalAlignment = Alignment.CenterVertically
+              ) {
+                  Box(
+                      modifier = Modifier
+                          .size(26.dp)
+                          .clip(CircleShape)
+                          .background(Brush.linearGradient(listOf(C21Violet, C21Cyan))),
+                      contentAlignment = Alignment.Center
+                  ) {
+                      Text(number, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                  }
+                  Spacer(Modifier.width(10.dp))
+                  Text(
+                      text,
+                      modifier = Modifier.weight(1f),
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      fontSize = 13.sp,
+                      lineHeight = 20.sp
+                  )
+              }
+          }
+          C21_EOF
+          cat > "$D/c21_icon_bg.xml" <<'C21_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android"
+              android:shape="rectangle">
+              <gradient
+                  android:angle="315"
+                  android:endColor="#0891B2"
+                  android:startColor="#3B1B8F" />
+          </shape>
+          C21_EOF
+          cat > "$D/c21_fg.xml" <<'C21_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#00000000"
+                  android:pathData="M70.85,39.86 A22,22 0 1 0 70.85,68.14"
+                  android:strokeColor="#FFFFFF"
+                  android:strokeLineCap="round"
+                  android:strokeWidth="8" />
+              <path
+                  android:fillColor="#FBBF24"
+                  android:pathData="M74,54 m-5,0 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0" />
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M54,54 m-4,0 a4,4 0 1 0 8,0 a4,4 0 1 0 -8,0" />
+          </vector>
+          C21_EOF
+          cat > "$D/ic_launcher_adaptive.xml" <<'C21_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/c21_icon_bg" />
+              <foreground android:drawable="@drawable/c21_fg" />
+              <monochrome android:drawable="@drawable/c21_fg" />
+          </adaptive-icon>
+          C21_EOF
+          cat > "$D/apply_c21.py" <<'C21_EOF'
+          import pathlib
+          import re
+          import shutil
+          import sys
+
+          SRC = pathlib.Path(sys.argv[1])
+          APP = pathlib.Path("V2rayNG/app")
+          MAIN = APP / "src/main"
+          UI = MAIN / "java/com/v2ray/ang/ui"
+          RES = MAIN / "res"
+
+
+          def rd(p):
+              return p.read_text(encoding="utf-8")
+
+
+          def wr(p, s):
+              p.write_text(s, encoding="utf-8")
+
+
+          def sub(path, old, new, count=1):
+              s = rd(path)
+              found = s.count(old)
+              if found != count:
+                  sys.exit("PATCH FAILED in %s: expected %d match(es), found %d for:\n%s" % (path, count, found, old))
+              wr(path, s.replace(old, new))
+              print("patched", path)
+
+
+          def add_imports(path, imports):
+              s = rd(path)
+              m = re.search(r"^package .*$", s, re.M)
+              if not m:
+                  sys.exit("no package line in %s" % path)
+              block = "\n" + "\n".join("import " + i for i in imports)
+              wr(path, s[: m.end()] + block + s[m.end():])
+
+
+          def put(src_name, dest):
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(SRC / src_name, dest)
+              print("wrote", dest)
+
+
+          # 1) whole-file replacements and new files
+          put("Theme.kt", UI / "compose/Theme.kt")
+          put("MainBottomBar.kt", UI / "main/MainBottomBar.kt")
+          put("MainDrawer.kt", UI / "main/MainDrawer.kt")
+          put("Connected21UI.kt", UI / "main/Connected21UI.kt")
+          put("c21_icon_bg.xml", RES / "drawable/c21_icon_bg.xml")
+          put("c21_fg.xml", RES / "drawable/c21_fg.xml")
+          put("ic_launcher_adaptive.xml", RES / "mipmap-anydpi-v26/ic_launcher.xml")
+          put("ic_launcher_adaptive.xml", RES / "mipmap-anydpi-v26/ic_launcher_round.xml")
+
+          # 2) name and package id
+          sub(RES / "values/strings.xml",
+              '<string name="app_name" translatable="false">v2rayNG</string>',
+              '<string name="app_name" translatable="false">Connected21</string>')
+          sub(APP / "build.gradle.kts", 'applicationId = "com.v2ray.ang"',
+              'applicationId = "com.v2ray.ang.connected21"')
+          sub(RES / "xml/shortcuts.xml", 'android:targetPackage="com.v2ray.ang"',
+              'android:targetPackage="com.v2ray.ang.connected21"', count=4)
+
+          # 3) main screen: aurora background, sponsor popup, banner, quick start
+          ms = UI / "main/MainScreen.kt"
+          sub(ms, "    ModalNavigationDrawer(\n        drawerState = drawerState,",
+              "    C21SponsorPopup()\n\n    ModalNavigationDrawer(\n        drawerState = drawerState,")
+          sub(ms, "        Scaffold(\n            contentWindowInsets = ScaffoldDefaults.contentWindowInsets,",
+              "        Scaffold(\n            modifier = Modifier.c21Aurora(isDarkTheme),\n"
+              "            containerColor = Color.Transparent,\n"
+              "            contentWindowInsets = ScaffoldDefaults.contentWindowInsets,")
+          sub(ms, "                ) {\n                    if (groups.size > 1) {",
+              "                ) {\n                    C21SponsorBanner()\n                    C21QuickStart()\n"
+              "                    if (groups.size > 1) {")
+          add_imports(ms, ["androidx.compose.ui.graphics.Color"])
+
+          # 4) top bar: brand title + transparent bar
+          sub(UI / "main/MainTopBar.kt", "title = stringResource(R.string.title_server),",
+              "title = stringResource(R.string.app_name),")
+          comp = UI / "compose/Components.kt"
+          sub(comp, "                containerColor = MaterialTheme.colorScheme.surface,\n                titleContentColor",
+              "                containerColor = Color.Transparent,\n                titleContentColor")
+          sub(comp, "fun ItemDivider() {\n    AppDivider(modifier = Modifier.padding(horizontal = 12.dp))\n}",
+              "fun ItemDivider() {\n}")
+
+          # 5) server rows become cards
+          pager = UI / "main/MainServerPager.kt"
+          sub(pager,
+              "    Row(\n        modifier = Modifier\n            .fillMaxWidth()\n            .height(IntrinsicSize.Min)\n            .semantics {",
+              "    Row(\n        modifier = Modifier\n            .fillMaxWidth()\n"
+              "            .padding(horizontal = 12.dp, vertical = 5.dp)\n"
+              "            .clip(RoundedCornerShape(18.dp))\n"
+              "            .background(\n"
+              "                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)\n"
+              "                else MaterialTheme.colorScheme.surfaceContainer\n"
+              "            )\n"
+              "            .border(\n"
+              "                1.dp,\n"
+              "                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)\n"
+              "                else MaterialTheme.colorScheme.outlineVariant,\n"
+              "                RoundedCornerShape(18.dp)\n"
+              "            )\n"
+              "            .height(IntrinsicSize.Min)\n            .semantics {")
+          add_imports(pager, ["androidx.compose.foundation.border",
+                              "androidx.compose.foundation.shape.RoundedCornerShape"])
+
+          # 6) promotion entry opens the sponsor channel instead of a third-party page
+          sub(UI / "main/MainActivity.kt",
+              '                Utils.openUri(\n                    this,\n'
+              '                    "${Utils.decode(AppConfig.APP_PROMOTION_URL)}?t=${System.currentTimeMillis()}"\n'
+              '                )',
+              '                Utils.openUri(this, "https://t.me/Vpn_Store21")')
+
+          print("ALL PATCHES APPLIED")
+          C21_EOF
+          ls -la "$D"
+
+      - name: Apply Connected21 design
+        run: python3 /tmp/c21src/apply_c21.py /tmp/c21src
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: c21.jks
+          key: connected21-keystore-v1
+
+      - name: Create signing key if missing
+        run: |
+          if [ ! -f c21.jks ]; then
+            keytool -genkeypair -keystore c21.jks -alias connected21 -keyalg RSA -keysize 2048 -validity 36500 -storepass c21store123 -keypass c21store123 -dname "CN=Connected21, O=Connected21, C=IR"
+          fi
+          ls -la c21.jks
+
+      - name: Build release APK
         working-directory: V2rayNG
         run: |
-          chmod +x gradlew
-          ./gradlew assemblePlaystoreDebug --no-daemon --console=plain > build.log 2>&1 || { grep -n -E "^e: |error:|What went wrong|FAILED|Execution failed" -A6 build.log | head -80; exit 1; }
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          chmod 755 gradlew
+          ./gradlew assemblePlaystoreRelease --no-daemon --console=plain \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/c21.jks" \
+            -Pandroid.injected.signing.store.password=c21store123 \
+            -Pandroid.injected.signing.key.alias=connected21 \
+            -Pandroid.injected.signing.key.password=c21store123 > build.log 2>&1 || {
+              grep -n -E "^e: |error:|What went wrong|FAILED|Execution failed" -A6 build.log | head -80
+              echo "----- LAST LINES -----"
+              tail -40 build.log
+              exit 1
+            }
 
-      - uses: actions/upload-artifact@v4
+      - name: Collect APK files
+        run: |
+          mkdir -p out
+          for f in V2rayNG/app/build/outputs/apk/playstore/release/*.apk; do
+            b=$(basename "$f")
+            cp "$f" "out/${b/v2rayNG/Connected21}"
+          done
+          ls -la out
+
+      - name: Publish to Releases (direct APK download)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-$(date +%Y%m%d-%H%M%S)"
+          gh release create "$TAG" out/*.apk --title "Connected21 $TAG" --notes "Connected21 APK. For most phones download the file ending with arm64-v8a.apk (or universal.apk if unsure)."
+
+      - name: Backup copy as artifact
+        uses: actions/upload-artifact@v4
         with:
           name: Connected21-apk
-          path: V2rayNG/app/build/outputs/apk/**/*.apk
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: design-sources
-          if-no-files-found: ignore
-          path: |
-            V2rayNG/app/src/main/res/layout/activity_main.xml
-            V2rayNG/app/src/main/res/values/colors.xml
-            V2rayNG/app/src/main/res/values/themes.xml
-            V2rayNG/app/src/main/res/values/styles.xml
+          path: out/*.apk
