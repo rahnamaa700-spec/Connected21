@@ -16,7 +16,8 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - name: Accept SDK licenses
+        run: yes | sdkmanager --licenses > /dev/null || true
 
       - name: Build debug APK
         working-directory: V2rayNG
