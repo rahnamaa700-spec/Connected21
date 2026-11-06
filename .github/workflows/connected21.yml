@@ -66,6 +66,7 @@ jobs:
           import androidx.compose.foundation.isSystemInDarkTheme
           import androidx.compose.foundation.layout.Box
           import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.material3.ColorScheme
           import androidx.compose.material3.MaterialTheme
           import androidx.compose.material3.darkColorScheme
           import androidx.compose.material3.dynamicDarkColorScheme
@@ -73,7 +74,11 @@ jobs:
           import androidx.compose.material3.lightColorScheme
           import androidx.compose.runtime.Composable
           import androidx.compose.runtime.CompositionLocalProvider
+          import androidx.compose.runtime.LaunchedEffect
           import androidx.compose.runtime.SideEffect
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.setValue
           import androidx.compose.runtime.collectAsState
           import androidx.compose.runtime.compositionLocalOf
           import androidx.compose.runtime.getValue
@@ -84,6 +89,7 @@ jobs:
           import androidx.core.view.WindowCompat
           import com.v2ray.ang.AppConfig
           import com.v2ray.ang.handler.MmkvManager
+          import kotlinx.coroutines.delay
           import kotlinx.coroutines.flow.MutableStateFlow
           import kotlinx.coroutines.flow.StateFlow
           import kotlinx.coroutines.flow.asStateFlow
@@ -162,6 +168,125 @@ jobs:
               surfaceContainerHighest = Color(0xFF212963),
           )
 
+          private val BlackColor = darkColorScheme(
+              primary = Color(0xFFFFFFFF),
+              onPrimary = Color(0xFF000000),
+              primaryContainer = Color(0xFF2A2A2A),
+              onPrimaryContainer = Color(0xFFFFFFFF),
+              secondary = Color(0xFFBDBDBD),
+              onSecondary = Color(0xFF000000),
+              secondaryContainer = Color(0xFF262626),
+              onSecondaryContainer = Color(0xFFEDEDED),
+              tertiary = Color(0xFFE0E0E0),
+              onTertiary = Color(0xFF000000),
+              tertiaryContainer = Color(0xFF2E2E2E),
+              onTertiaryContainer = Color(0xFFFFFFFF),
+              error = Color(0xFFFF8A80),
+              errorContainer = Color(0xFF93000A),
+              onError = Color(0xFF690005),
+              onErrorContainer = Color(0xFFFFDAD6),
+              background = Color(0xFF000000),
+              onBackground = Color(0xFFFFFFFF),
+              surface = Color(0xFF0A0A0A),
+              onSurface = Color(0xFFFFFFFF),
+              surfaceVariant = Color(0xFF1F1F1F),
+              onSurfaceVariant = Color(0xFFCFCFCF),
+              outline = Color(0xFF8A8A8A),
+              outlineVariant = Color(0xFF2E2E2E),
+              inverseSurface = Color(0xFFFFFFFF),
+              inverseOnSurface = Color(0xFF000000),
+              inversePrimary = Color(0xFF000000),
+              scrim = Color(0xFF000000),
+              surfaceTint = Color(0xFFFFFFFF),
+              surfaceContainerLowest = Color(0xFF000000),
+              surfaceContainerLow = Color(0xFF0A0A0A),
+              surfaceContainer = Color(0xFF121212),
+              surfaceContainerHigh = Color(0xFF1A1A1A),
+              surfaceContainerHighest = Color(0xFF222222),
+          )
+
+          private val WhiteColor = lightColorScheme(
+              primary = Color(0xFF6D28D9),
+              onPrimary = Color(0xFFFFFFFF),
+              primaryContainer = Color(0xFFEDE4FF),
+              onPrimaryContainer = Color(0xFF2A0A66),
+              secondary = Color(0xFF8B5CF6),
+              onSecondary = Color(0xFFFFFFFF),
+              secondaryContainer = Color(0xFFE5DBFF),
+              onSecondaryContainer = Color(0xFF2A0A66),
+              tertiary = Color(0xFF7C3AED),
+              onTertiary = Color(0xFFFFFFFF),
+              tertiaryContainer = Color(0xFFF0E8FF),
+              onTertiaryContainer = Color(0xFF2A0A66),
+              error = Color(0xFFDC2626),
+              errorContainer = Color(0xFFFFDAD6),
+              onError = Color(0xFFFFFFFF),
+              onErrorContainer = Color(0xFF410002),
+              background = Color(0xFFFFFFFF),
+              onBackground = Color(0xFF1A1033),
+              surface = Color(0xFFFFFFFF),
+              onSurface = Color(0xFF1A1033),
+              surfaceVariant = Color(0xFFF1EBFF),
+              onSurfaceVariant = Color(0xFF4B3B7A),
+              outline = Color(0xFF8C7BB8),
+              outlineVariant = Color(0xFFDDD2F5),
+              inverseSurface = Color(0xFF2A1F4D),
+              inverseOnSurface = Color(0xFFF4EEFF),
+              inversePrimary = Color(0xFFC4B0FF),
+              scrim = Color(0xFF000000),
+              surfaceTint = Color(0xFF6D28D9),
+              surfaceContainerLowest = Color(0xFFFFFFFF),
+              surfaceContainerLow = Color(0xFFFAF7FF),
+              surfaceContainer = Color(0xFFF4EEFF),
+              surfaceContainerHigh = Color(0xFFEEE6FF),
+              surfaceContainerHighest = Color(0xFFE8DDFF),
+          )
+
+          /** Colours that slowly drift around the colour wheel. [h] is the base hue in degrees. */
+          private fun dynamicHueScheme(h: Float): ColorScheme {
+              fun c(dh: Float, s: Float, v: Float): Color =
+                  Color.hsv((((h + dh) % 360f) + 360f) % 360f, s, v)
+              return darkColorScheme(
+                  primary = c(0f, 0.55f, 1f),
+                  onPrimary = c(0f, 0.9f, 0.18f),
+                  primaryContainer = c(0f, 0.6f, 0.38f),
+                  onPrimaryContainer = c(0f, 0.12f, 1f),
+                  secondary = c(50f, 0.6f, 1f),
+                  onSecondary = c(50f, 0.9f, 0.2f),
+                  secondaryContainer = c(50f, 0.7f, 0.32f),
+                  onSecondaryContainer = c(50f, 0.15f, 1f),
+                  tertiary = c(120f, 0.55f, 1f),
+                  onTertiary = c(120f, 0.9f, 0.2f),
+                  tertiaryContainer = c(120f, 0.7f, 0.32f),
+                  onTertiaryContainer = c(120f, 0.15f, 1f),
+                  error = Color(0xFFFF8A80),
+                  errorContainer = Color(0xFF93000A),
+                  onError = Color(0xFF690005),
+                  onErrorContainer = Color(0xFFFFDAD6),
+                  background = c(0f, 0.6f, 0.07f),
+                  onBackground = c(0f, 0.08f, 0.96f),
+                  surface = c(0f, 0.6f, 0.12f),
+                  onSurface = c(0f, 0.08f, 0.96f),
+                  surfaceVariant = c(0f, 0.5f, 0.25f),
+                  onSurfaceVariant = c(0f, 0.15f, 0.85f),
+                  outline = c(0f, 0.3f, 0.6f),
+                  outlineVariant = c(0f, 0.5f, 0.3f),
+                  inverseSurface = c(0f, 0.08f, 0.96f),
+                  inverseOnSurface = c(0f, 0.6f, 0.1f),
+                  inversePrimary = c(0f, 0.7f, 0.5f),
+                  scrim = Color(0xFF000000),
+                  surfaceTint = c(0f, 0.55f, 1f),
+                  surfaceContainerLowest = c(0f, 0.6f, 0.05f),
+                  surfaceContainerLow = c(0f, 0.6f, 0.09f),
+                  surfaceContainer = c(0f, 0.6f, 0.14f),
+                  surfaceContainerHigh = c(0f, 0.6f, 0.19f),
+                  surfaceContainerHighest = c(0f, 0.6f, 0.24f),
+              )
+          }
+
+          /** How strong the coloured glow behind the main screen is (0 = flat background). */
+          val LocalC21GlowAlpha = compositionLocalOf { 1f }
+
           // Semantic Colors
           val colorPing = Color(0xFF34D399)
           val colorPingRed = Color(0xFFFF5C8A)
@@ -182,6 +307,19 @@ jobs:
           val toastTextColor = Color.White // White
 
           object ThemeManager {
+              private const val C21_THEME_KEY = "pref_c21_theme"
+
+              private val _c21Theme = MutableStateFlow(
+                  MmkvManager.decodeSettingsString(C21_THEME_KEY, "current") ?: "current"
+              )
+              /** One of: current, black, white, dynamic. */
+              val c21Theme: StateFlow<String> = _c21Theme.asStateFlow()
+
+              fun setC21Theme(id: String) {
+                  MmkvManager.encodeSettings(C21_THEME_KEY, id)
+                  _c21Theme.value = id
+              }
+
               private val _themeMode = MutableStateFlow(
                   MmkvManager.decodeSettingsString(AppConfig.PREF_UI_MODE_NIGHT, "2") ?: "0"
               )
@@ -228,14 +366,29 @@ jobs:
               content: @Composable () -> Unit
           ) {
               val dynamicColor by ThemeManager.dynamicColorEnabled.collectAsState()
+              val c21Theme by ThemeManager.c21Theme.collectAsState()
               val context = LocalContext.current
+              val hue = if (c21Theme == "dynamic") rememberC21Hue() else 0f
+              val isDark = when (c21Theme) {
+                  "black", "dynamic" -> true
+                  "white" -> false
+                  else -> darkTheme
+              }
               val colorScheme = when {
+                  c21Theme == "black" -> BlackColor
+                  c21Theme == "white" -> WhiteColor
+                  c21Theme == "dynamic" -> dynamicHueScheme(hue)
                   dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                      if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+                      if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
                   }
 
-                  darkTheme -> DarkColor
+                  isDark -> DarkColor
                   else -> LightColor
+              }
+              val glowAlpha = when (c21Theme) {
+                  "black" -> 0f
+                  "white" -> 0.5f
+                  else -> 1f
               }
               val snackbarController = rememberAppSnackbarController()
 
@@ -245,14 +398,15 @@ jobs:
                       val activity = view.context as? Activity ?: return@SideEffect
                       val window = activity.window
                       WindowCompat.getInsetsController(window, view).apply {
-                          isAppearanceLightStatusBars = !darkTheme
-                          isAppearanceLightNavigationBars = !darkTheme
+                          isAppearanceLightStatusBars = !isDark
+                          isAppearanceLightNavigationBars = !isDark
                       }
                   }
               }
 
               CompositionLocalProvider(
-                  LocalDarkTheme provides darkTheme,
+                  LocalDarkTheme provides isDark,
+                  LocalC21GlowAlpha provides glowAlpha,
                   LocalAppSnackbar provides snackbarController
               ) {
                   MaterialTheme(
@@ -265,6 +419,18 @@ jobs:
                       }
                   }
               }
+          }
+
+          @Composable
+          private fun rememberC21Hue(): Float {
+              var hue by remember { mutableStateOf(0f) }
+              LaunchedEffect(Unit) {
+                  while (true) {
+                      delay(120)
+                      hue = (hue + 1.2f) % 360f
+                  }
+              }
+              return hue
           }
           C21_EOF
           cat > "$D/MainBottomBar.kt" <<'C21_EOF'
@@ -329,7 +495,7 @@ jobs:
               onAction: (MainAction) -> Unit
           ) {
               val panelShape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
-              val accent = if (isRunning) colorFabActive else C21Violet
+              val accent = if (isRunning) colorFabActive else MaterialTheme.colorScheme.primary
 
               CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                   Column(
@@ -414,8 +580,11 @@ jobs:
               val buttonBrush = if (isRunning) {
                   Brush.linearGradient(listOf(Color(0xFF10B981), Color(0xFF22D3EE)))
               } else {
-                  Brush.linearGradient(listOf(Color(0xFF7C5CFF), Color(0xFF22D3EE)))
+                  Brush.linearGradient(
+                      listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                  )
               }
+              val iconTint = if (isRunning) Color.White else MaterialTheme.colorScheme.onPrimary
 
               Box(
                   modifier = Modifier.size(116.dp),
@@ -463,7 +632,7 @@ jobs:
                           contentDescription = stringResource(
                               if (isRunning) R.string.acc_stop else R.string.acc_start
                           ),
-                          tint = Color.White,
+                          tint = iconTint,
                           modifier = Modifier.size(36.dp)
                       )
                   }
@@ -490,7 +659,7 @@ jobs:
                       Icon(
                           painter = painterResource(iconRes),
                           contentDescription = label,
-                          tint = C21Cyan,
+                          tint = MaterialTheme.colorScheme.secondary,
                           modifier = Modifier.size(22.dp)
                       )
                       Spacer(Modifier.height(4.dp))
@@ -662,6 +831,12 @@ jobs:
           import androidx.compose.foundation.background
           import androidx.compose.foundation.border
           import androidx.compose.foundation.clickable
+          import androidx.compose.animation.core.LinearEasing
+          import androidx.compose.animation.core.RepeatMode
+          import androidx.compose.animation.core.animateFloat
+          import androidx.compose.animation.core.infiniteRepeatable
+          import androidx.compose.animation.core.rememberInfiniteTransition
+          import androidx.compose.animation.core.tween
           import androidx.compose.foundation.layout.Arrangement
           import androidx.compose.foundation.layout.Box
           import androidx.compose.foundation.layout.Column
@@ -677,6 +852,7 @@ jobs:
           import androidx.compose.material3.MaterialTheme
           import androidx.compose.material3.Text
           import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.collectAsState
           import androidx.compose.runtime.CompositionLocalProvider
           import androidx.compose.runtime.getValue
           import androidx.compose.runtime.mutableStateOf
@@ -684,8 +860,16 @@ jobs:
           import androidx.compose.runtime.setValue
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
+          import androidx.compose.ui.composed
           import androidx.compose.ui.draw.clip
           import androidx.compose.ui.draw.drawBehind
+          import androidx.compose.ui.draw.drawWithContent
+          import androidx.compose.ui.geometry.CornerRadius
+          import androidx.compose.ui.geometry.RoundRect
+          import androidx.compose.ui.graphics.Path
+          import androidx.compose.ui.graphics.PathMeasure
+          import androidx.compose.ui.graphics.StrokeCap
+          import androidx.compose.ui.graphics.drawscope.Stroke
           import androidx.compose.ui.geometry.Offset
           import androidx.compose.ui.graphics.Brush
           import androidx.compose.ui.graphics.Color
@@ -700,6 +884,7 @@ jobs:
           import androidx.compose.ui.unit.sp
           import androidx.compose.ui.window.Dialog
           import androidx.compose.ui.window.DialogProperties
+          import com.v2ray.ang.ui.compose.ThemeManager
 
           // ---------------------------------------------------------------------------
           // Connected21 brand pieces: aurora background, sponsor popup/banner/card, quick start guide
@@ -726,17 +911,23 @@ jobs:
               }
           }
 
-          /** Dark navy canvas with soft violet and cyan glows, used behind the main screen. */
-          fun Modifier.c21Aurora(dark: Boolean): Modifier = this.drawBehind {
-              val base = if (dark) Color(0xFF070B1A) else Color(0xFFF4F5FF)
+          /** Themed canvas with two soft colour glows, used behind the main screen. */
+          fun Modifier.c21Aurora(
+              dark: Boolean,
+              base: Color,
+              glow1: Color,
+              glow2: Color,
+              strength: Float
+          ): Modifier = this.drawBehind {
               drawRect(base)
-              val violetAlpha = if (dark) 0.38f else 0.16f
-              val cyanAlpha = if (dark) 0.26f else 0.12f
+              if (strength <= 0f) return@drawBehind
+              val a1 = (if (dark) 0.38f else 0.16f) * strength
+              val a2 = (if (dark) 0.26f else 0.12f) * strength
               val r1 = size.width * 0.95f
               val c1 = Offset(size.width * 0.12f, size.height * 0.02f)
               drawCircle(
                   brush = Brush.radialGradient(
-                      colors = listOf(C21Violet.copy(alpha = violetAlpha), Color.Transparent),
+                      colors = listOf(glow1.copy(alpha = a1), Color.Transparent),
                       center = c1,
                       radius = r1
                   ),
@@ -747,13 +938,147 @@ jobs:
               val c2 = Offset(size.width * 0.95f, size.height * 0.78f)
               drawCircle(
                   brush = Brush.radialGradient(
-                      colors = listOf(C21Cyan.copy(alpha = cyanAlpha), Color.Transparent),
+                      colors = listOf(glow2.copy(alpha = a2), Color.Transparent),
                       center = c2,
                       radius = r2
                   ),
                   radius = r2,
                   center = c2
               )
+          }
+
+          /**
+           * Thin animated line that travels around a server card.
+           * Green when the server has a ping result, red when it has none or failed.
+           */
+          fun Modifier.c21PingBorder(delayMillis: Long): Modifier = composed {
+              val ok = delayMillis > 0L
+              val color = if (ok) C21Mint else Color(0xFFFF4D6D)
+              val transition = rememberInfiniteTransition(label = "c21-border")
+              val progress = transition.animateFloat(
+                  initialValue = 0f,
+                  targetValue = 1f,
+                  animationSpec = infiniteRepeatable(
+                      animation = tween(durationMillis = if (ok) 3600 else 2400, easing = LinearEasing),
+                      repeatMode = RepeatMode.Restart
+                  ),
+                  label = "c21-border-progress"
+              )
+              this.drawWithContent {
+                  drawContent()
+                  val stroke = 2.dp.toPx()
+                  val half = stroke / 2f
+                  val radius = 18.dp.toPx() - half
+                  val rect = RoundRect(
+                      left = half,
+                      top = half,
+                      right = size.width - half,
+                      bottom = size.height - half,
+                      cornerRadius = CornerRadius(radius, radius)
+                  )
+                  // faint full outline
+                  drawRoundRect(
+                      color = color.copy(alpha = 0.30f),
+                      topLeft = Offset(half, half),
+                      size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
+                      cornerRadius = CornerRadius(radius, radius),
+                      style = Stroke(width = stroke)
+                  )
+                  // travelling highlight
+                  val path = Path().apply { addRoundRect(rect) }
+                  val measure = PathMeasure()
+                  measure.setPath(path, false)
+                  val length = measure.length
+                  if (length > 0f) {
+                      val start = progress.value * length
+                      val end = start + length * 0.16f
+                      val segment = Path()
+                      if (end <= length) {
+                          measure.getSegment(start, end, segment, true)
+                      } else {
+                          measure.getSegment(start, length, segment, true)
+                          measure.getSegment(0f, end - length, segment, true)
+                      }
+                      drawPath(
+                          path = segment,
+                          color = color,
+                          style = Stroke(width = stroke * 1.6f, cap = StrokeCap.Round)
+                      )
+                  }
+              }
+          }
+
+          /** Row of round theme buttons: current, black, white, dynamic. */
+          @Composable
+          fun C21ThemePicker() {
+              val selected by ThemeManager.c21Theme.collectAsState()
+              val cs = MaterialTheme.colorScheme
+              CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                  Row(
+                      modifier = Modifier
+                          .fillMaxWidth()
+                          .padding(horizontal = 16.dp, vertical = 4.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                  ) {
+                      Text("تم برنامه", color = cs.onSurfaceVariant, fontSize = 12.sp)
+                      Spacer(Modifier.width(12.dp))
+                      C21ThemeDot(
+                          isSelected = selected == "current",
+                          brush = Brush.linearGradient(listOf(Color(0xFF7C5CFF), Color(0xFF22D3EE))),
+                          checkColor = Color.White
+                      ) { ThemeManager.setC21Theme("current") }
+                      Spacer(Modifier.width(12.dp))
+                      C21ThemeDot(
+                          isSelected = selected == "black",
+                          brush = Brush.linearGradient(listOf(Color(0xFF000000), Color(0xFF2A2A2A))),
+                          checkColor = Color.White
+                      ) { ThemeManager.setC21Theme("black") }
+                      Spacer(Modifier.width(12.dp))
+                      C21ThemeDot(
+                          isSelected = selected == "white",
+                          brush = Brush.linearGradient(listOf(Color(0xFFFFFFFF), Color(0xFFE8DDFF))),
+                          checkColor = Color(0xFF6D28D9)
+                      ) { ThemeManager.setC21Theme("white") }
+                      Spacer(Modifier.width(12.dp))
+                      C21ThemeDot(
+                          isSelected = selected == "dynamic",
+                          brush = Brush.sweepGradient(
+                              listOf(
+                                  Color(0xFFFF5C8A), Color(0xFFFBBF24), Color(0xFF34D399),
+                                  Color(0xFF22D3EE), Color(0xFF7C5CFF), Color(0xFFFF5C8A)
+                              )
+                          ),
+                          checkColor = Color.White
+                      ) { ThemeManager.setC21Theme("dynamic") }
+                  }
+              }
+          }
+
+          @Composable
+          private fun C21ThemeDot(
+              isSelected: Boolean,
+              brush: Brush,
+              checkColor: Color,
+              onClick: () -> Unit
+          ) {
+              val cs = MaterialTheme.colorScheme
+              Box(
+                  modifier = Modifier
+                      .size(34.dp)
+                      .clip(CircleShape)
+                      .background(brush)
+                      .border(
+                          if (isSelected) 3.dp else 1.dp,
+                          if (isSelected) cs.onSurface else cs.outline,
+                          CircleShape
+                      )
+                      .clickable(onClick = onClick),
+                  contentAlignment = Alignment.Center
+              ) {
+                  if (isSelected) {
+                      Text("✓", color = checkColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                  }
+              }
           }
 
           /** Full sponsor dialog, shown at most once every 6 hours. */
@@ -1001,10 +1326,14 @@ jobs:
                       modifier = Modifier
                           .size(26.dp)
                           .clip(CircleShape)
-                          .background(Brush.linearGradient(listOf(C21Violet, C21Cyan))),
+                          .background(
+                              Brush.linearGradient(
+                                  listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                              )
+                          ),
                       contentAlignment = Alignment.Center
                   ) {
-                      Text(number, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                      Text(number, color = MaterialTheme.colorScheme.onPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                   }
                   Spacer(Modifier.width(10.dp))
                   Text(
@@ -1125,13 +1454,21 @@ jobs:
           sub(ms, "    ModalNavigationDrawer(\n        drawerState = drawerState,",
               "    C21SponsorPopup()\n\n    ModalNavigationDrawer(\n        drawerState = drawerState,")
           sub(ms, "        Scaffold(\n            contentWindowInsets = ScaffoldDefaults.contentWindowInsets,",
-              "        Scaffold(\n            modifier = Modifier.c21Aurora(isDarkTheme),\n"
+              "        Scaffold(\n            modifier = Modifier.c21Aurora(\n"
+              "                isDarkTheme,\n"
+              "                MaterialTheme.colorScheme.background,\n"
+              "                MaterialTheme.colorScheme.primary,\n"
+              "                MaterialTheme.colorScheme.secondary,\n"
+              "                LocalC21GlowAlpha.current\n"
+              "            ),\n"
               "            containerColor = Color.Transparent,\n"
               "            contentWindowInsets = ScaffoldDefaults.contentWindowInsets,")
           sub(ms, "                ) {\n                    if (groups.size > 1) {",
-              "                ) {\n                    C21SponsorBanner()\n                    C21QuickStart()\n"
+              "                ) {\n                    C21SponsorBanner()\n                    C21ThemePicker()\n                    C21QuickStart()\n"
               "                    if (groups.size > 1) {")
-          add_imports(ms, ["androidx.compose.ui.graphics.Color"])
+          add_imports(ms, ["androidx.compose.ui.graphics.Color",
+                           "androidx.compose.material3.MaterialTheme",
+                           "com.v2ray.ang.ui.compose.LocalC21GlowAlpha"])
 
           # 4) top bar: brand title + transparent bar
           sub(UI / "main/MainTopBar.kt", "title = stringResource(R.string.title_server),",
@@ -1153,12 +1490,7 @@ jobs:
               "                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)\n"
               "                else MaterialTheme.colorScheme.surfaceContainer\n"
               "            )\n"
-              "            .border(\n"
-              "                1.dp,\n"
-              "                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)\n"
-              "                else MaterialTheme.colorScheme.outlineVariant,\n"
-              "                RoundedCornerShape(18.dp)\n"
-              "            )\n"
+              "            .c21PingBorder(row.testDelayMillis)\n"
               "            .height(IntrinsicSize.Min)\n            .semantics {")
           add_imports(pager, ["androidx.compose.foundation.border",
                               "androidx.compose.foundation.shape.RoundedCornerShape"])
@@ -1169,6 +1501,96 @@ jobs:
               '                    "${Utils.decode(AppConfig.APP_PROMOTION_URL)}?t=${System.currentTimeMillis()}"\n'
               '                )',
               '                Utils.openUri(this, "https://t.me/Vpn_Store21")')
+
+          # 7) auto update + ping
+          vm = UI / "main/MainViewModel.kt"
+          sub(vm, "                dataSource.syncSubscriptions()\n            } catch (cancelled: CancellationException) {",
+              "                dataSource.syncSubscriptions()\n                c21AutoStart()\n            } catch (cancelled: CancellationException) {")
+          sub(vm, "            MainAction.TestRealAllServers -> testAllRealPing()",
+              "            MainAction.TestRealAllServers -> c21TestEverything()")
+          sub(vm, """                        count > 0 -> {
+                                      toast(dataSource.getString(R.string.title_import_config_count, count))
+                                      setupGroupTab(forceRefresh = true)
+                                  }
+
+                                  countSub > 0 -> setupGroupTab(forceRefresh = true)""",
+              """                        count > 0 -> {
+                                      toast(dataSource.getString(R.string.title_import_config_count, count))
+                                      setupGroupTab(forceRefresh = true)
+                                      viewModelScope.launch { c21TestEverything() }
+                                  }
+
+                                  countSub > 0 -> {
+                                      setupGroupTab(forceRefresh = true)
+                                      viewModelScope.launch { importConfigViaSub("") }
+                                  }""")
+          sub(vm, """                    if (result.configCount > 0) {
+                                  setupGroupTab(forceRefresh = true)
+                                  refreshSelectedGuid()
+                              }
+          """, """                    if (result.configCount > 0) {
+                                  setupGroupTab(forceRefresh = true)
+                                  refreshSelectedGuid()
+                              }
+                              viewModelScope.launch { c21TestEverything() }
+          """)
+          sub(vm, "    private fun cancelPendingTestResults() {", """    // ---------- Connected21: automatic update and ping ----------
+              private var c21Started = false
+
+              private fun c21AutoStart() {
+                  if (c21Started) return
+                  c21Started = true
+                  viewModelScope.launch {
+                      val hasSubs = withContext(ioDispatcher) {
+                          dataSource.getSubscriptions().any { it.subscription.url.isNotBlank() }
+                      }
+                      if (hasSubs) importConfigViaSub("") else c21TestEverything()
+                  }
+              }
+
+              /** Real-ping every server of every subscription, no matter which tab is open. */
+              fun c21TestEverything() {
+                  val allGuids = com.v2ray.ang.handler.MmkvManager.decodeAllServerList().toList()
+                  if (allGuids.isEmpty()) return
+                  cancelAllPing()
+                  val groupId = uiState.value.selectedGroupId
+                  uiState.value.groups.forEach { group ->
+                      mutableServerGroupState(group.id).update { current ->
+                          current.copy(
+                              servers = current.servers.map { server ->
+                                  if (server.testDelayMillis == 0L) server
+                                  else server.copy(testDelayMillis = 0L)
+                              },
+                              rows = current.rows.map { row ->
+                                  if (row.testDelayMillis == 0L) row
+                                  else row.copy(testDelayMillis = 0L)
+                              }
+                          )
+                      }
+                  }
+                  val request = testRequests.beginBulk(groupId)
+                  val message = TestServiceMessage(
+                      key = AppConfig.MSG_MEASURE_CONFIG_START,
+                      subscriptionId = "",
+                      serverGuids = emptyList(),
+                      onlyTcp = false
+                  )
+                  _uiState.update {
+                      it.copy(
+                          isTesting = true,
+                          status = MainStatus.Testing
+                      )
+                  }
+                  bulkTestJob = viewModelScope.launch {
+                      withContext(ioDispatcher) {
+                          dataSource.clearAllTestDelayResults(allGuids)
+                          cacheMutex.withLock { groupDataCache.clear() }
+                      }
+                      dataSource.sendMsg2TestService(message, request.id)
+                  }
+              }
+
+              private fun cancelPendingTestResults() {""")
 
           print("ALL PATCHES APPLIED")
           C21_EOF
