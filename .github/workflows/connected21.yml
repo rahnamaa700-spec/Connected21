@@ -20,7 +20,112 @@ jobs:
         run: |
           mkdir -p V2rayNG/app/libs
           curl -L -f -o V2rayNG/app/libs/libv2ray.aar https://github.com/2dust/AndroidLibXrayLite/releases/latest/download/libv2ray.aar
-          ls -la V2rayNG/app/libs
+
+      - name: Rename app to Connected21
+        run: |
+          sed -i 's|>v2rayNG<|>Connected21<|g' V2rayNG/app/src/main/res/values/strings.xml
+
+      - name: Add sponsor dialog
+        run: |
+          cat > V2rayNG/app/src/main/java/com/v2ray/ang/ui/SponsorDialog.kt <<'EOF'
+          package com.v2ray.ang.ui
+
+          import android.app.Activity
+          import android.app.Dialog
+          import android.content.Intent
+          import android.graphics.Color
+          import android.graphics.Typeface
+          import android.graphics.drawable.ColorDrawable
+          import android.graphics.drawable.GradientDrawable
+          import android.net.Uri
+          import android.view.Gravity
+          import android.view.View
+          import android.view.ViewGroup
+          import android.view.Window
+          import android.widget.LinearLayout
+          import android.widget.TextView
+
+          object SponsorDialog {
+
+              private fun dp(a: Activity, v: Int): Int =
+                  (v * a.resources.displayMetrics.density).toInt()
+
+              fun show(activity: Activity) {
+                  val prefs = activity.getSharedPreferences("connected21", Activity.MODE_PRIVATE)
+                  val now = System.currentTimeMillis()
+                  if (now - prefs.getLong("sponsor_last", 0L) < 6 * 60 * 60 * 1000L) return
+                  prefs.edit().putLong("sponsor_last", now).apply()
+
+                  val dialog = Dialog(activity)
+                  dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+                  val root = LinearLayout(activity).apply {
+                      orientation = LinearLayout.VERTICAL
+                      gravity = Gravity.CENTER_HORIZONTAL
+                      layoutDirection = View.LAYOUT_DIRECTION_RTL
+                      setPadding(dp(activity, 24), dp(activity, 28), dp(activity, 24), dp(activity, 20))
+                      background = GradientDrawable(
+                          GradientDrawable.Orientation.TL_BR,
+                          intArrayOf(Color.parseColor("#12063B"), Color.parseColor("#5B21B6"), Color.parseColor("#0891B2"))
+                      ).apply { cornerRadius = dp(activity, 28).toFloat() }
+                  }
+
+                  fun label(text: String, size: Float, color: String, bold: Boolean = false, top: Int = 0) =
+                      TextView(activity).apply {
+                          this.text = text
+                          textSize = size
+                          setTextColor(Color.parseColor(color))
+                          gravity = Gravity.CENTER
+                          if (bold) setTypeface(typeface, Typeface.BOLD)
+                          setPadding(0, dp(activity, top), 0, 0)
+                      }
+
+                  root.addView(label("✦", 34f, "#FFFFFF"))
+                  root.addView(label("اسپانسر رسمی Connected21", 14f, "#B8E6FF", top = 6))
+                  root.addView(label("کانفیگ اختصاصی\nبدون قطعی", 24f, "#FFFFFF", bold = true, top = 14))
+                  root.addView(label("با پایین‌ترین قیمت بازار\nخرید سریع و پشتیبانی همیشگی", 14f, "#E5E7EB", top = 12))
+                  root.addView(label("@Vpn_Store21", 18f, "#FDE68A", bold = true, top = 14))
+
+                  val button = TextView(activity).apply {
+                      text = "عضویت و خرید در تلگرام"
+                      textSize = 16f
+                      setTextColor(Color.parseColor("#12063B"))
+                      setTypeface(typeface, Typeface.BOLD)
+                      gravity = Gravity.CENTER
+                      background = GradientDrawable().apply {
+                          setColor(Color.WHITE)
+                          cornerRadius = dp(activity, 20).toFloat()
+                      }
+                      setOnClickListener {
+                          try {
+                              activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Vpn_Store21")))
+                          } catch (e: Exception) {
+                          }
+                          dialog.dismiss()
+                      }
+                  }
+                  root.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 52)).apply {
+                      topMargin = dp(activity, 20)
+                  })
+
+                  val later = label("بعداً", 14f, "#CBD5E1", top = 14).apply {
+                      setPadding(dp(activity, 20), dp(activity, 14), dp(activity, 20), dp(activity, 4))
+                      setOnClickListener { dialog.dismiss() }
+                  }
+                  root.addView(later)
+
+                  dialog.setContentView(root)
+                  dialog.window?.apply {
+                      setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                      setLayout((activity.resources.displayMetrics.widthPixels * 0.9).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+                  }
+                  dialog.show()
+              }
+          }
+          EOF
+          F=V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          sed -i '0,/super.onCreate(savedInstanceState)/s//super.onCreate(savedInstanceState)\n        SponsorDialog.show(this)/' $F
+          grep -n "SponsorDialog" $F || { echo "MainActivity patch failed"; exit 1; }
 
       - name: Accept SDK licenses
         run: yes | sdkmanager --licenses > /dev/null || true
@@ -35,3 +140,14 @@ jobs:
         with:
           name: Connected21-apk
           path: V2rayNG/app/build/outputs/apk/**/*.apk
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: design-sources
+          if-no-files-found: ignore
+          path: |
+            V2rayNG/app/src/main/res/layout/activity_main.xml
+            V2rayNG/app/src/main/res/values/colors.xml
+            V2rayNG/app/src/main/res/values/themes.xml
+            V2rayNG/app/src/main/res/values/styles.xml
